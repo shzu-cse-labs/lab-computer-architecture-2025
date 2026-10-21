@@ -1,4 +1,6 @@
 # lab-computer-architecture-2025
+
+<div dir="rtl">
 Experiments on datapath design, control unit implementation, pipelining, memory hierarchy, and performance evaluation of computer systems, using the open RISC-V (RV32I) ISA, Verilog, simulation and FPGA.
 
 ---
@@ -51,13 +53,37 @@ test:
 	mkdir -p build
 	iverilog -g2012 -Wall -o build/sim rtl/*.v testbench/tb.v
 	vvp build/sim | tee build/sim.log
-	@! grep -q "FAIL" build/sim.log
+	@grep -q "PASS" build/sim.log && ! grep -q "FAIL" build/sim.log
 
 lint:
 	verilator --lint-only -Wall rtl/*.v
 ```
 
 Testbench باید برای هر خطا عبارت `FAIL` و در پایان `PASS` یا `FAIL` چاپ کند تا اجرای خودکار (مثلاً GitHub Actions) ممکن باشد.
+
+**ساخت فایل hex برنامه** (برای `$readmemh`؛ هر خط یک کلمه‌ی ۳۲ بیتی little-endian):
+
+```bash
+riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -nostartfiles -Ttext=0 -o prog.elf prog.S
+riscv64-unknown-elf-objcopy -O binary prog.elf prog.bin
+python3 -c "d=open('prog.bin','rb').read();print('\n'.join('%02x%02x%02x%02x'%(d[i+3],d[i+2],d[i+1],d[i]) for i in range(0,len(d),4)))" > prog.hex
+```
+
+نمونه‌ی **CI** (`.github/workflows/ci.yml`):
+
+```yaml
+name: ci
+on: [push, pull_request]
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y iverilog verilator make
+      - run: for d in exp*/; do make -C "$d" test lint || exit 1; done
+```
+
+> برای FPGA متن‌باز: بردهای iCE40/ECP5/Tang Nano با Yosys + nextpnr؛ برای Basys 3 معمولاً Vivado. نام مخزن «2025» است؛ در صورت نیاز به 2026 تغییر دهید.
 
 ---
 
@@ -190,6 +216,8 @@ ALU هسته پردازنده است. در RISC-V همین واحد برای م�
 
 ### 🧪 تمرین افزوده
 دو جمع‌کننده ریپل و پیش‌بینی رقم نقلی (Carry-Lookahead) را پیاده کنید و تأخیر و مساحت را مقایسه کنید.
+
+**تأیید رسمی (اختیاری):** با SymbiYosys این ویژگی را اثبات کنید: «خروجی ALU برای همه‌ی ورودی‌ها برابر مدل مرجع است» (با `assert`)؛ تفاوت آن با تست تصادفی ۱۰٬۰۰۰ بردار را بنویسید.
 
 ---
 
@@ -356,6 +384,8 @@ Icarus Verilog، GTKWave، RARS، Yosys/nextpnr (یا Vivado/Quartus)، (اخت�
 ### 🎯 هدف
 اندازه‌گیری اثر سلسله‌مراتب حافظه روی یک سیستم واقعی، طراحی و ارزیابی یک کش در Verilog و محاسبه AMAT.
 
+> ⏱️ حجم این آزمایش زیاد است؛ در برنامه‌ی ترم آن را در **دو جلسه** اجرا کنید (الف: اندازه‌گیری، ب: طراحی کش).
+
 ### 📋 پیش‌گزارش
 1. برای کش مستقیم (direct-mapped) با ظرفیت ۴ KB، بلوک ۱۶ بایت و آدرس ۳۲ بیتی، تعداد بیت‌های offset، index و tag را حساب کنید. (مرجع: offset ۴ بیت، index ۸ بیت، tag ۲۰ بیت).
 2. فرمول `AMAT = زمان hit + نرخ miss × جریمه miss` را بنویسید و برای یک مثال عددی حساب کنید.
@@ -375,7 +405,7 @@ Linux (یا WSL) با `gcc`، `perf` یا `valgrind` (cachegrind)، Python با 
 **بخش الف: اندازه‌گیری روی سیستم واقعی**
 1. اندازه کش‌های سیستم را با `lscpu` ثبت کنید.
 2. برنامه‌ی تأخیر دسترسی بنویسید (pointer chasing): آرایه‌ای با اندازه‌های ۴ KB تا ۲۵۶ MB با ترتیب تصادفی پیمایش شود و زمان متوسط دسترسی اندازه‌گیری شود. نمودار زمان بر حسب اندازه (محور لگاریتمی) رسم کنید و پله‌های L1/L2/L3/DRAM را شناسایی کنید.
-3. ضرب ماتریس را با ترتیب حلقه‌های `ijk`، `ikj` و بلوکی (tiling) بنویسید. زمان و تعداد missها را (`perf stat -e cache-misses,cache-references` یا `valgrind --tool=cachegrind`) برای اندازه‌های مختلف مقایسه کنید.
+3. ضرب ماتریس را با ترتیب حلقه‌های `ijk`، `ikj` و بلوکی (tiling) بنویسید. زمان و تعداد missها را (`perf stat -e cache-misses,cache-references` یا `valgrind --tool=cachegrind`) برای اندازه‌های مختلف مقایسه کنید. (در ماشین مجازی/WSL شمارنده‌های سخت‌افزاری `perf` معمولاً در دسترس نیست؛ در این حالت از cachegrind یا شبیه‌ساز کش خودتان استفاده کنید.)
 
 **بخش ب: طراحی کش**
 4. کش مستقیم نوشتن‌همزمان (write-through) با پارامترهای قابل تنظیم (تعداد خطوط، اندازه بلوک) را در Verilog بنویسید. ماشین حالت: IDLE، COMPARE، REFILL (و WRITEBACK در صورت write-back).
@@ -536,6 +566,8 @@ Icarus Verilog، GTKWave، کد پایپ‌لاین با forwarding (آزمای�
 ### 🧪 تمرین افزوده
 یک پیش‌بینی‌کننده ۲ بیتی (BHT با ۱۶ ورودی و ایندکس‌گذاری با بیت‌های پایین PC) پیاده‌سازی کنید و اثر آن را روی CPI حلقه‌ها بسنجید. (نیاز به تعیین زودهنگام آدرس هدف شاخه در IF دارد.)
 
+**اندازه‌گیری روی سیستم واقعی:** آرایه‌ی تصادفی ~۱۰⁷ عنصری را یک‌بار مرتب‌نشده و یک‌بار مرتب‌شده با شرط `if (a[i] >= 128) sum += a[i]` پیمایش کنید و زمان و `branch-misses` (با `perf stat`) را مقایسه کنید؛ اثر پیش‌بینی شاخه و تبدیل شرط به `cmov` توسط کامپایلر (`-O0` در برابر `-O2`) را توضیح دهید.
+
 ---
 
 ## 🔬 آزمایش ۱۰: پروژه پایانی: پردازنده پایپ‌لاین‌شده RV32I با ویژگی انتخابی
@@ -556,7 +588,7 @@ Icarus Verilog، GTKWave، کد پایپ‌لاین با forwarding (آزمای�
 ### 📝 مراحل انجام کار
 1. **مشخصات و معماری:** سند مشخصات، بلوک دیاگرام کامل، لیست دستورات پشتیبانی‌شده و ویژگی انتخابی.
 2. **پیاده‌سازی ماژولی** با testbench خودبررسی‌کننده برای هر ماژول و `make test`.
-3. **تأیید سیستمی:** مجموعه برنامه‌های آزمون (حداقل ۵ برنامه شامل حلقه، شرط، `lw/sw`، `jal`، hazard های داده و کنترل) با مقایسه خودکار با مرجع RARS (ثبات‌ها و حافظه). (امتیازی: اجرای زیرمجموعه‌ای از آزمون‌های `rv32ui` پروژه riscv-tests.)
+3. **تأیید سیستمی:** مجموعه برنامه‌های آزمون (حداقل ۵ برنامه شامل حلقه، شرط، `lw/sw`، `jal`، hazard های داده و کنترل) با مقایسه خودکار با مرجع RARS (ثبات‌ها و حافظه). (امتیازی: اجرای زیرمجموعه‌ای از آزمون‌های `rv32ui` پروژه riscv-tests.) علاوه بر آن می‌توانید **ردپای اجرا** (PC و ثبات نوشته‌شده در هر دستور) را با شبیه‌ساز مرجع (Spike، RARS یا Ripes) مقایسه کنید و اولین اختلاف را بیابید؛ سطح بالاتر: `riscv-arch-test`.
 4. **ارزیابی عملکرد:** CPI، Fmax و زمان اجرای حداقل ۳ برنامه، مقایسه با تک‌سیکل و (برای ویژگی انتخابی) با و بدون آن ویژگی.
 5. **گزارش:** معماری، تصمیم‌های طراحی، نتایج تأیید، جدول عملکرد، محدودیت‌ها و کارهای آینده.
 6. **دمو** در جلسه پایانی با پرسش و پاسخ فردی.
@@ -596,3 +628,5 @@ Icarus Verilog، GTKWave، کد پایپ‌لاین با forwarding (آزمای�
 ## 📞 تماس
 
 در صورت داشتن هرگونه سؤال، از طریق Issues در همین ریپازیتوری یا ایمیل دانشگاهی با استاد درس در تماس باشید.
+
+</div>
